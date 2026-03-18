@@ -17,9 +17,35 @@ import androidx.media.app.NotificationCompat.MediaStyle;
 
 import android.support.v4.media.session.MediaSessionCompat;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class MusicService extends Service {
 
     private static MediaPlayer mediaPlayer;
+
+    // 🔥 Song Model
+    static class Song {
+        String title;
+        int resId;
+
+        Song(String title, int resId) {
+            this.title = title;
+            this.resId = resId;
+        }
+    }
+
+    // 🔥 Song List
+    private static final List<Song> SONG_LIST = new ArrayList<>();
+
+    static {
+        SONG_LIST.add(new Song("Night Drive", R.raw.night_drive));
+        SONG_LIST.add(new Song("City Lights", R.raw.city_lights));
+        SONG_LIST.add(new Song("Midnight", R.raw.midnight));
+        SONG_LIST.add(new Song("Ocean Waves", R.raw.ocean_waves));
+    }
+
+    private static int currentIndex = 0;
 
     public static final String ACTION_PLAY = "PLAY";
     public static final String ACTION_PAUSE = "PAUSE";
@@ -27,6 +53,7 @@ public class MusicService extends Service {
     public static final String ACTION_TOGGLE = "TOGGLE";
     public static final String ACTION_PREVIOUS = "PREVIOUS";
     public static final String ACTION_NEXT = "NEXT";
+    public static final String ACTION_SONG_CHANGED = "SONG_CHANGED";
 
     private static final String CHANNEL_ID = "music_channel";
     private static final int NOTIFICATION_ID = 1;
@@ -66,20 +93,33 @@ public class MusicService extends Service {
 
             if (ACTION_PLAY.equals(action)) {
                 int resId = intent.getIntExtra("resId", -1);
-                playMusic(resId);
+
+                for (int i = 0; i < SONG_LIST.size(); i++) {
+                    if (SONG_LIST.get(i).resId == resId) {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+
+                playMusic(SONG_LIST.get(currentIndex).resId);
                 updateNotification(true);
+
             } else if (ACTION_TOGGLE.equals(action)) {
                 toggleMusic();
                 updateNotification(false);
+
             } else if (ACTION_PAUSE.equals(action)) {
                 pauseMusic();
                 updateNotification(false);
+
             } else if (ACTION_PREVIOUS.equals(action)) {
                 previousMusic();
                 updateNotification(false);
+
             } else if (ACTION_NEXT.equals(action)) {
                 nextMusic();
                 updateNotification(false);
+
             } else if (ACTION_STOP.equals(action)) {
                 stopMusic();
                 stopForeground(true);
@@ -92,8 +132,6 @@ public class MusicService extends Service {
     }
 
     private void playMusic(int resId) {
-        if (resId == -1) return;
-
         if (mediaPlayer != null) {
             mediaPlayer.release();
         }
@@ -101,13 +139,14 @@ public class MusicService extends Service {
         mediaPlayer = MediaPlayer.create(this, resId);
         if (mediaPlayer == null) return;
 
-        mediaPlayer.setOnCompletionListener(mp -> {
-            stopProgressUpdates();
-            updateNotification(false);
-        });
+        mediaPlayer.setOnCompletionListener(mp -> nextMusic());
 
         mediaPlayer.start();
         startProgressUpdates();
+
+        Intent intent = new Intent(ACTION_SONG_CHANGED);
+        intent.putExtra("songName", SONG_LIST.get(currentIndex).title);
+        sendBroadcast(intent);
     }
 
     private void toggleMusic() {
@@ -117,7 +156,7 @@ public class MusicService extends Service {
             mediaPlayer.pause();
             stopProgressUpdates();
         } else {
-            mediaPlayer.start(); // resume same MediaPlayer instance
+            mediaPlayer.start();
             startProgressUpdates();
         }
     }
@@ -130,25 +169,13 @@ public class MusicService extends Service {
     }
 
     private void previousMusic() {
-        if (mediaPlayer == null) return;
-        mediaPlayer.seekTo(0);
-        if (!mediaPlayer.isPlaying()) {
-            mediaPlayer.start();
-        }
-        startProgressUpdates();
+        currentIndex = (currentIndex - 1 + SONG_LIST.size()) % SONG_LIST.size();
+        playMusic(SONG_LIST.get(currentIndex).resId);
     }
 
     private void nextMusic() {
-        if (mediaPlayer == null) return;
-        int nextPosition = mediaPlayer.getCurrentPosition() + 10_000;
-        int duration = mediaPlayer.getDuration();
-        if (duration > 0) {
-            mediaPlayer.seekTo(Math.min(nextPosition, duration));
-        }
-        if (!mediaPlayer.isPlaying()) {
-            mediaPlayer.start();
-        }
-        startProgressUpdates();
+        currentIndex = (currentIndex + 1) % SONG_LIST.size();
+        playMusic(SONG_LIST.get(currentIndex).resId);
     }
 
     private void stopMusic() {
@@ -215,7 +242,7 @@ public class MusicService extends Service {
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("VibeMusic")
-                .setContentText(playing ? "Playing music..." : "Music paused")
+                .setContentText(SONG_LIST.get(currentIndex).title)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setOnlyAlertOnce(true)
                 .setOngoing(true)

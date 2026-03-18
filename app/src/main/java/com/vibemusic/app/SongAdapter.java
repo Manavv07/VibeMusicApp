@@ -34,6 +34,10 @@ public class SongAdapter extends RecyclerView.Adapter<SongAdapter.ViewHolder> {
 
                 if (position != RecyclerView.NO_POSITION) {
                     MusicPlayerManager.play(v.getContext(), position);
+
+                    if (v.getContext() instanceof MainActivity) {
+                        ((MainActivity) v.getContext()).refreshMiniPlayer();
+                    }
                 }
             });
         }
